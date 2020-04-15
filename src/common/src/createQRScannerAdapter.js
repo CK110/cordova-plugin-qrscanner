@@ -153,21 +153,24 @@ function doneCallback(callback, clear) {
   };
 }
 
+//  ["QR_CODE", "DATA_MATRIX","UPC_E","EAN_8","EAN_13","CODE_39","CODE_93","CODE_128","ITF", "PDF_417","AZTEC"]
+//  QRScanner.prepare((err, status) => { // ...}, { formats: [ 'CODE_128', 'QR_CODE', 'EAN_13' ] });
+//  QRScanner.scan((err, status) => { // ...}, { formats: [ 'CODE_128', 'QR_CODE', 'EAN_13' ] });
 return {
-  prepare: function(callback) {
-    cordova.exec(successCallback(callback), errorCallback(callback), 'QRScanner', 'prepare', []);
+  prepare: function(callback, options) {
+    cordova.exec(successCallback(callback), errorCallback(callback), 'QRScanner', 'prepare', options ? [options] : []);
   },
   destroy: function(callback) {
     cordova.exec(doneCallback(callback, true), null, 'QRScanner', 'destroy', []);
   },
-  scan: function(callback) {
+  scan: function(callback, options) {
     if (!callback) {
       throw new Error('No callback provided to scan method.');
     }
     var success = function(result) {
       callback(null, result);
     };
-    cordova.exec(success, errorCallback(callback), 'QRScanner', 'scan', []);
+    cordova.exec(success, errorCallback(callback), 'QRScanner', 'scan', options ? [options] : []);
   },
   cancelScan: function(callback) {
     cordova.exec(doneCallback(callback), null, 'QRScanner', 'cancelScan', []);

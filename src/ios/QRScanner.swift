@@ -3,10 +3,10 @@ import AVFoundation
 
 @objc(QRScanner)
 class QRScanner : CDVPlugin, AVCaptureMetadataOutputObjectsDelegate {
-    
+
     class CameraView: UIView {
         var videoPreviewLayer:AVCaptureVideoPreviewLayer?
-        
+
         func interfaceOrientationToVideoOrientation(_ orientation : UIInterfaceOrientation) -> AVCaptureVideoOrientation {
             switch (orientation) {
             case UIInterfaceOrientation.portrait:
@@ -29,18 +29,18 @@ class QRScanner : CDVPlugin, AVCaptureMetadataOutputObjectsDelegate {
                     layer.frame = self.bounds;
                 }
             }
-            
+
             self.videoPreviewLayer?.connection?.videoOrientation = interfaceOrientationToVideoOrientation(UIApplication.shared.statusBarOrientation);
         }
-        
-        
+
+
         func addPreviewLayer(_ previewLayer:AVCaptureVideoPreviewLayer?) {
             previewLayer!.videoGravity = AVLayerVideoGravity.resizeAspectFill
             previewLayer!.frame = self.bounds
             self.layer.addSublayer(previewLayer!)
             self.videoPreviewLayer = previewLayer;
         }
-        
+
         func removePreviewLayer() {
             if self.videoPreviewLayer != nil {
                 self.videoPreviewLayer!.removeFromSuperlayer()
@@ -78,6 +78,7 @@ class QRScanner : CDVPlugin, AVCaptureMetadataOutputObjectsDelegate {
         case backCameraUnavailable
         case frontCameraUnavailable
         case couldNotCaptureInput(error: NSError)
+        case invalidFormat
     }
 
     enum LightError: Error {
@@ -120,7 +121,74 @@ class QRScanner : CDVPlugin, AVCaptureMetadataOutputObjectsDelegate {
         }
     }
 
+    static var defaultFormatList: [AVMetadataObject.ObjectType] = [
+        AVMetadataObject.ObjectType.qr,
+        AVMetadataObject.ObjectType.dataMatrix,
+        AVMetadataObject.ObjectType.upce,
+        AVMetadataObject.ObjectType.ean8,
+        AVMetadataObject.ObjectType.ean13,
+        AVMetadataObject.ObjectType.code39,
+        AVMetadataObject.ObjectType.code93,
+        AVMetadataObject.ObjectType.code128,
+        AVMetadataObject.ObjectType.itf14,
+        AVMetadataObject.ObjectType.pdf417,
+        AVMetadataObject.ObjectType.aztec
+    ]
+
+    var formatList: [AVMetadataObject.ObjectType] = []
+
+    func setAcceptableFormatList(arg: Any) {
+        do {
+            if !(arg is [String : Any]) {
+                throw CaptureError.invalidFormat
+            }
+
+            let json = arg as! [String : Any]
+            if (json["formats"] == nil || !(json["formats"] is [String])) {
+                throw CaptureError.invalidFormat
+            }
+
+            let formats = json["formats"] as! [String];
+            for (_, value) in formats.enumerated() {
+                 switch value {
+                    case "QR_CODE":
+                        formatList.append(AVMetadataObject.ObjectType.qr)
+                    case "DATA_MATRIX":
+                        formatList.append(AVMetadataObject.ObjectType.dataMatrix)
+                    case "UPC_E":
+                        formatList.append(AVMetadataObject.ObjectType.upce)
+                    case "EAN_8":
+                        formatList.append(AVMetadataObject.ObjectType.ean8)
+                    case "EAN_13":
+                        formatList.append(AVMetadataObject.ObjectType.ean13)
+                    case "CODE_39":
+                        formatList.append(AVMetadataObject.ObjectType.code39)
+                    case "CODE_93":
+                        formatList.append(AVMetadataObject.ObjectType.code93)
+                    case "CODE_128":
+                        formatList.append(AVMetadataObject.ObjectType.code128)
+                    case "ITF":
+                        formatList.append(AVMetadataObject.ObjectType.itf14)
+                    case "PDF_417":
+                        formatList.append(AVMetadataObject.ObjectType.pdf417)
+                    case "AZTEC":
+                        formatList.append(AVMetadataObject.ObjectType.aztec)
+                    default:
+                        print("invalidFormat")
+                  }
+            }
+        } catch {
+            formatList = QRScanner.defaultFormatList
+        }
+    }
+
     @objc func prepScanner(command: CDVInvokedUrlCommand) -> Bool{
+        if (command.arguments.count > 0) {
+            setAcceptableFormatList(arg: command.argument(at: 0)!)
+        } else{
+            // Otherwise, use previously set format list
+            formatList = QRScanner.defaultFormatList
+        }
         let status = AVCaptureDevice.authorizationStatus(for: AVMediaType.video)
         if (status == AVAuthorizationStatus.restricted) {
             self.sendErrorCode(command: command, error: QRScannerError.camera_access_restricted)
@@ -153,7 +221,7 @@ class QRScanner : CDVPlugin, AVCaptureMetadataOutputObjectsDelegate {
                 metaOutput = AVCaptureMetadataOutput()
                 captureSession!.addOutput(metaOutput!)
                 metaOutput!.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
-                metaOutput!.metadataObjectTypes = [AVMetadataObject.ObjectType.qr]
+                metaOutput!.metadataObjectTypes = formatList
                 captureVideoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession!)
                 cameraView.addPreviewLayer(captureVideoPreviewLayer)
                 captureSession!.startRunning()
@@ -238,7 +306,7 @@ class QRScanner : CDVPlugin, AVCaptureMetadataOutputObjectsDelegate {
             return
         }
         let found = metadataObjects[0] as! AVMetadataMachineReadableCodeObject
-        if found.type == AVMetadataObject.ObjectType.qr && found.stringValue != nil {
+        if (formatList.contains(found.type)  && found.stringValue != nil) {
             scanning = false
             let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: found.stringValue)
             commandDelegate!.send(pluginResult, callbackId: nextScanningCommand?.callbackId!)
